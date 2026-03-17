@@ -17,13 +17,10 @@ export function useVariants() {
   });
 
   const loadVariants = useCallback(async () => {
-    console.log('🎣 [useVariants] Iniciando carga de variantes...');
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     
     try {
       const variants = await VariantService.getVariants();
-      console.log('✅ [useVariants] Variantes cargadas:', variants.length);
-      console.log('🆔 [useVariants] IDs obtenidos:', variants.map(v => v.id));
       setState({
         variants,
         isLoading: false,
@@ -33,7 +30,6 @@ export function useVariants() {
       const errorMessage = error instanceof Error 
         ? error.message 
         : 'Error al cargar variantes';
-      console.error('❌ [useVariants] Error:', errorMessage);
       setState(prev => ({
         ...prev,
         isLoading: false,

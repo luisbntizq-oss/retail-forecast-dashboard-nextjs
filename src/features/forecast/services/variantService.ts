@@ -3,38 +3,38 @@ import { supabase } from '@/lib/supabase';
 export interface Variant {
   id: string;
   sku?: string;
+  current_stock?: number;
 }
+
+// Mock data for development when Supabase is not configured
+const mockVariants: Variant[] = [
+  { id: '1', sku: 'VAR-001' },
+  { id: '2', sku: 'VAR-002' },
+  { id: '3', sku: 'VAR-003' },
+  { id: '4', sku: 'VAR-004' },
+  { id: '5', sku: 'VAR-005' },
+];
 
 export class VariantService {
   /**
-   * Obtiene todas las variantes desde Supabase
+   * Obtiene todas las variantes desde Supabase o mock data
    */
   static async getVariants(): Promise<Variant[]> {
-    console.log('🔍 [VariantService] Iniciando carga de variantes...');
-    
     if (!supabase) {
-      console.error('❌ [VariantService] Supabase no está configurado');
-      throw new Error('Supabase no está configurado. Verifica las variables de entorno.');
+      console.warn('[VariantService] Supabase no configurado');
+      return mockVariants;
     }
 
-    console.log('✅ [VariantService] Supabase configurado correctamente');
-
     try {
-      console.log('📡 [VariantService] Haciendo petición a Supabase tabla "variant"...');
-      
       const { data, error } = await supabase
         .from('variant')
-        .select('id, sku')
+        .select('id, sku, current_stock')
         .order('id', { ascending: true });
 
       if (error) {
-        console.error('❌ [VariantService] Error en petición Supabase:', error);
+        console.error('[VariantService] Error:', error.message);
         throw new Error(`Error al cargar variantes: ${error.message}`);
       }
-
-      console.log(`✅ [VariantService] Variantes cargadas exitosamente:`, data?.length || 0, 'registros');
-      console.log('📊 [VariantService] IDs de variantes:', data?.map(v => v.id));
-      console.log('📋 [VariantService] Datos completos:', data);
 
       return data || [];
     } catch (error) {
@@ -48,7 +48,8 @@ export class VariantService {
    */
   static async getVariantById(id: string): Promise<Variant | null> {
     if (!supabase) {
-      throw new Error('Supabase no está configurado. Verifica las variables de entorno.');
+      console.warn('⚠️ [VariantService] Supabase no está configurado, usando datos mock');
+      return mockVariants.find(v => v.id === id) || null;
     }
 
     try {

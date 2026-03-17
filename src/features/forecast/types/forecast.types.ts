@@ -4,6 +4,17 @@ export interface ForecastRequest {
   endDate: string;
   historicalData?: SalesData[];
   algorithm?: 'arima' | 'prophet' | 'lstm';
+  leadTime?: number;
+  serviceLevel?: number;
+  predictionHorizon?: number;
+  currentStock?: number;
+  outlier_treatment?: 'none' | 'cap' | 'detect' | 'holidays' | 'remove';
+  outlier_sensitivity?: number;
+  test_mode?: boolean;
+  weekly_seasonality?: number;
+  yearly_seasonality?: number;
+  seasonality_prior_scale?: number;
+  changepoint_prior_scale?: number;
 }
 
 export interface SalesData {
@@ -15,7 +26,7 @@ export interface SalesData {
 export interface ForecastResponse {
   forecastId: string;
   predictions: Prediction[];
-  confidence: number;
+  precision: number;
   metrics: ForecastMetrics;
   createdAt: string;
 }
