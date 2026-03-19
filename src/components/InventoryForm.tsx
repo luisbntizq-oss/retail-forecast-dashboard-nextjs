@@ -24,7 +24,7 @@ export function InventoryForm({ onCalculate, loading }: InventoryFormProps) {
     // Valores por defecto de parámetros avanzados
     outlier_treatment: 'cap',
     outlier_sensitivity: 2.5,
-    test_mode: false,
+    train_on_all_data: false,
     weekly_seasonality: 10.0,
     yearly_seasonality: 0.0,
     seasonality_prior_scale: 10.0,
@@ -243,17 +243,17 @@ export function InventoryForm({ onCalculate, loading }: InventoryFormProps) {
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
-                  id="test_mode"
-                  checked={params.test_mode}
-                  onChange={(e) => setParams({ ...params, test_mode: e.target.checked })}
+                  id="train_on_all_data"
+                  checked={params.train_on_all_data}
+                  onChange={(e) => setParams({ ...params, train_on_all_data: e.target.checked })}
                   className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                 />
-                <label htmlFor="test_mode" className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                  Modo Test (100% datos)
+                <label htmlFor="train_on_all_data" className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  Entrenar con todo (train_on_all_data)
                   <div className="group relative">
                     <Info className="w-4 h-4 text-gray-400 cursor-help" />
                     <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-72 p-2 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
-                      Entrenar con el 100% de datos sin split de validación
+                      Entrenar con el 100% de datos sin split de validación (Mejora precisión final)
                     </div>
                   </div>
                 </label>

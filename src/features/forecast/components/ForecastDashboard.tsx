@@ -5,17 +5,23 @@ import { TrendingUp, AlertCircle, Package } from 'lucide-react';
 import { useForecast } from '../hooks/useForecast';
 import { useSalesHistory } from '../hooks/useSalesHistory';
 import { useROPHistory } from '../hooks/useROPHistory';
+import { useVariants } from '../hooks/useVariants';
 import { ForecastControls } from './ForecastControls';
 import { ForecastChart } from './ForecastChart';
+import { SKUGrid } from './SKUGrid';
 import { ImportInventory } from '@/components/ImportInventory';
-import { KPICard } from '@/components/KPICard';
+import type { ForecastRequest } from '../types/forecast.types';
+import { BatchForecastService } from '../services/batchForecastService';
 
 export function ForecastDashboard() {
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
+  const [selectedVariantIds, setSelectedVariantIds] = useState<string[]>([]);
   const [dateRange, setDateRange] = useState<{ startDate: string; endDate: string }>({
     startDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0]
   });
+  const [forecastParams, setForecastParams] = useState<ForecastRequest | null>(null);
+  const { variants } = useVariants();
   const { data, isCalculating, error, calculateForecast, reset } = useForecast();
   const { salesHistory, isLoading: isLoadingHistory, error: historyError } = useSalesHistory(
     selectedVariantId,
@@ -26,8 +32,24 @@ export function ForecastDashboard() {
 
   const handleVariantChange = (variantId: string | null) => {
     setSelectedVariantId(variantId);
-    reset(); // Limpiar la predicción anterior al cambiar de SKU
-  }
+    reset();
+  };
+
+  const handleVariantsChange = (ids: string[]) => {
+    setSelectedVariantIds(ids);
+  };
+
+  const handleRemoveVariant = (idToRemove: string) => {
+    const newIds = selectedVariantIds.filter(id => id !== idToRemove);
+    setSelectedVariantIds(newIds);
+    
+    // Si era el seleccionado principal, cambiarlo
+    if (selectedVariantId === idToRemove) {
+      const nextId = newIds.length > 0 ? newIds[0] : null;
+      setSelectedVariantId(nextId);
+      if (!nextId) reset();
+    }
+  };
 
   const handleDatesChange = (startDate: string, endDate: string) => {
     setDateRange({ startDate, endDate });
@@ -35,7 +57,14 @@ export function ForecastDashboard() {
 
   const handleCalculate = async (request: any) => {
     try {
-      await calculateForecast(request);
+      if (selectedVariantIds.length > 1) {
+        const selectedVariants = variants.filter(v => 
+          selectedVariantIds.includes(v.id?.toString() ?? '')
+        );
+        await BatchForecastService.runBatch(selectedVariants, request);
+      } else {
+        await calculateForecast(request);
+      }
       await reloadROP(); // Recargar los KPIs de la tabla rop_history después de generar la predicción
     } catch (error) {
       console.error('Error al calcular predicción:', error);
@@ -79,23 +108,32 @@ export function ForecastDashboard() {
           </div>
         )}
 
-        {ropError && (
-          <div className="p-4 mb-6 bg-yellow-50 border border-yellow-200 rounded-md">
-            <p className="text-yellow-800">⚠️ {ropError}</p>
-          </div>
-        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           <div className="lg:col-span-1">
             <ForecastControls 
+              selectedVariantIds={selectedVariantIds}
               onCalculate={handleCalculate} 
               onVariantChange={handleVariantChange}
+              onVariantsChange={handleVariantsChange}
               onDatesChange={handleDatesChange}
+              onParamsChange={setForecastParams}
               isCalculating={isCalculating} 
             />
           </div>
 
           <div className="lg:col-span-2 space-y-4">
+            {/* SKU Grid — siempre visible cuando hay IDs seleccionados */}
+            <SKUGrid 
+              selectedIds={selectedVariantIds} 
+              variants={variants} 
+              onRemove={handleRemoveVariant}
+              onSelect={handleVariantChange}
+              selectedVariantId={selectedVariantId}
+              forecastParams={forecastParams}
+            />
+
+            {/* Gráfico de ventas — se desplaza debajo del grid */}
             {data || salesHistory.length > 0 ? (
               <ForecastChart 
                 data={data} 
@@ -103,38 +141,14 @@ export function ForecastDashboard() {
                 isLoadingHistory={isLoadingHistory}
               />
             ) : (
-              <div className="flex items-center justify-center h-full min-h-[400px] bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+              <div className="flex items-center justify-center h-full min-h-[300px] bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
                 <p className="text-gray-500">
                   Selecciona un SKU para ver su historial de ventas
                 </p>
               </div>
             )}
 
-            {ropData && (
-              <div className="grid grid-cols-3 gap-3">
-                <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 flex flex-col items-center justify-center">
-                  <div className="p-2 bg-blue-600 rounded-lg mb-2">
-                    <AlertCircle className="w-4 h-4 text-white" />
-                  </div>
-                  <p className="text-xs font-medium text-gray-600 mb-1">Punto de Pedido (ROP)</p>
-                  <p className="text-2xl font-bold text-gray-900">{ropData.reorder_point}</p>
-                </div>
-                <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 flex flex-col items-center justify-center">
-                  <div className="p-2 bg-emerald-600 rounded-lg mb-2">
-                    <Package className="w-4 h-4 text-white" />
-                  </div>
-                  <p className="text-xs font-medium text-gray-600 mb-1">Stock de Seguridad</p>
-                  <p className="text-2xl font-bold text-gray-900">{ropData.safety_stock}</p>
-                </div>
-                <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 flex flex-col items-center justify-center">
-                  <div className="p-2 bg-amber-600 rounded-lg mb-2">
-                    <TrendingUp className="w-4 h-4 text-white" />
-                  </div>
-                  <p className="text-xs font-medium text-gray-600 mb-1">Unidades a Reponer</p>
-                  <p className="text-2xl font-bold text-gray-900">{ropData.recommended_restock}</p>
-                </div>
-              </div>
-            )}
+
           </div>
         </div>
 

@@ -8,7 +8,7 @@ export interface InventoryParams {
   // Parámetros avanzados
   outlier_treatment?: 'none' | 'cap' | 'detect' | 'holidays' | 'remove';
   outlier_sensitivity?: number;
-  test_mode?: boolean;
+  train_on_all_data?: boolean;
   weekly_seasonality?: number;
   yearly_seasonality?: number;
   seasonality_prior_scale?: number;

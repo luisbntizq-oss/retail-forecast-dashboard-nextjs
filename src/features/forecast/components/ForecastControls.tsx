@@ -6,14 +6,18 @@ import { useVariants } from '../hooks/useVariants';
 import type { ForecastRequest } from '../types/forecast.types';
 
 interface ForecastControlsProps {
+  selectedVariantIds: string[];
   onCalculate: (request: ForecastRequest) => Promise<void>;
   onVariantChange?: (variantId: string | null) => void;
+  onVariantsChange?: (variantIds: string[]) => void;
   onDatesChange?: (startDate: string, endDate: string) => void;
+  onParamsChange?: (params: ForecastRequest) => void;
   isCalculating: boolean;
 }
 
-export function ForecastControls({ onCalculate, onVariantChange, onDatesChange, isCalculating }: ForecastControlsProps) {
+export function ForecastControls({ selectedVariantIds, onCalculate, onVariantChange, onVariantsChange, onDatesChange, onParamsChange, isCalculating }: ForecastControlsProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const { variants, isLoading: isLoadingVariants, error: variantsError } = useVariants();
   
   const [params, setParams] = useState<ForecastRequest>({
@@ -27,24 +31,38 @@ export function ForecastControls({ onCalculate, onVariantChange, onDatesChange, 
     // Valores por defecto de parámetros avanzados
     outlier_treatment: 'cap',
     outlier_sensitivity: 2.5,
-    test_mode: false,
+    train_on_all_data: false,
     weekly_seasonality: 10.0,
     yearly_seasonality: 0.0,
     seasonality_prior_scale: 10.0,
     changepoint_prior_scale: 0.05
   });
 
-  // Notificar las fechas iniciales al montar el componente
+  // Notificar cambios de estado
   useEffect(() => {
     if (params.startDate && params.endDate) {
       onDatesChange?.(params.startDate, params.endDate);
     }
-  }, []); // Solo al montar
+  }, [params.startDate, params.endDate, onDatesChange]);
+  
+  useEffect(() => {
+    onParamsChange?.(params);
+  }, [params, onParamsChange]);
 
-  const handleVariantChange = (value: string) => {
-    setParams({ ...params, productId: value });
-    const variantId = value || null;
-    onVariantChange?.(variantId);
+  const handleCheckboxChange = (value: string) => {
+    let newSelected: string[];
+    const idStr = value.toString();
+    if (selectedVariantIds.includes(idStr)) {
+      newSelected = selectedVariantIds.filter(id => id !== idStr);
+    } else {
+      newSelected = [...selectedVariantIds, idStr];
+    }
+    
+    // Para simplificar y mantener compatibilidad, asignamos el primer SKU a params.
+    const firstValue = newSelected.length > 0 ? newSelected[0] : '';
+    setParams(prev => ({ ...prev, productId: firstValue }));
+    onVariantChange?.(firstValue || null);
+    onVariantsChange?.(newSelected);
   };
 
   // Obtener el stock actual del variant seleccionado
@@ -87,9 +105,9 @@ export function ForecastControls({ onCalculate, onVariantChange, onDatesChange, 
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        <div>
+        <div className="relative">
           <label htmlFor="variantId" className="block text-sm font-medium text-gray-700 mb-2">
-            Variant ID (SKU)
+            Variant ID (SKUs)
           </label>
           
           {variantsError && (
@@ -98,24 +116,51 @@ export function ForecastControls({ onCalculate, onVariantChange, onDatesChange, 
             </div>
           )}
           
-          <select
-            id="variantId"
-            value={params.productId}
-            onChange={(e) => handleVariantChange(e.target.value)}
-            disabled={isLoadingVariants || isCalculating}
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
-            required
-          >
-            <option value="">
-              {isLoadingVariants ? 'Cargando variantes...' : 'Selecciona un SKU'}
-            </option>
-            
-            {variants.map((variant) => (
-              <option key={variant.id} value={variant.id}>
-                {variant.id}{variant.sku ? ` (${variant.sku})` : ''}
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <button
+              type="button"
+              id="variantId"
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              disabled={isLoadingVariants || isCalculating}
+              className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:bg-gray-100 disabled:cursor-not-allowed text-left flex items-center justify-between shadow-sm"
+            >
+              <span className="truncate">
+                {isLoadingVariants 
+                  ? 'Cargando variantes...' 
+                  : selectedVariantIds.length === 0 
+                  ? 'Seleccionar SKUs' 
+                  : `${selectedVariantIds.length} SKU${selectedVariantIds.length > 1 ? 's' : ''} seleccionado${selectedVariantIds.length > 1 ? 's' : ''}`}
+              </span>
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            </button>
+
+            {isDropdownOpen && !isLoadingVariants && !isCalculating && (
+              <>
+                <div 
+                  className="fixed inset-0 z-10" 
+                  onClick={() => setIsDropdownOpen(false)}
+                ></div>
+                <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                  {variants.map((variant) => (
+                    <label key={variant.id} className="flex items-center px-4 py-2 hover:bg-gray-50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedVariantIds.includes(variant.id?.toString() || '')}
+                        onChange={() => handleCheckboxChange(variant.id?.toString() || '')}
+                        className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 mr-3"
+                      />
+                      <span className="text-sm text-gray-700">
+                        {variant.id}{variant.sku ? ` (${variant.sku})` : ''}
+                      </span>
+                    </label>
+                  ))}
+                  {variants.length === 0 && (
+                    <div className="px-4 py-2 text-sm text-gray-500">No hay variantes disponibles</div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
           
           {!isLoadingVariants && variants.length > 0 && (
             <p className="mt-1 text-xs text-gray-500">
@@ -130,25 +175,6 @@ export function ForecastControls({ onCalculate, onVariantChange, onDatesChange, 
           )}
         </div>
 
-        {/* Stock Actual */}
-        <div>
-          <label htmlFor="currentStock" className="block text-sm font-medium text-gray-700 mb-2">
-            Stock Actual
-          </label>
-          <input
-            type="text"
-            id="currentStock"
-            value={
-              !params.productId 
-                ? 'Selecciona un SKU primero' 
-                : currentStock !== null && currentStock !== undefined
-                  ? currentStock.toString()
-                  : 'No disponible en Supabase'
-            }
-            readOnly
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 cursor-not-allowed"
-          />
-        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -302,17 +328,17 @@ export function ForecastControls({ onCalculate, onVariantChange, onDatesChange, 
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
-                  id="test_mode"
-                  checked={params.test_mode}
-                  onChange={(e) => setParams({ ...params, test_mode: e.target.checked })}
+                  id="train_on_all_data"
+                  checked={params.train_on_all_data}
+                  onChange={(e) => setParams({ ...params, train_on_all_data: e.target.checked })}
                   className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                 />
-                <label htmlFor="test_mode" className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                  Modo Test (100% datos)
+                <label htmlFor="train_on_all_data" className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  Entrenar con todo (train_on_all_data)
                   <div className="group relative">
                     <Info className="w-4 h-4 text-gray-400 cursor-help" />
                     <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-72 p-2 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
-                      Entrenar con el 100% de datos sin split de validación
+                      Entrenar con el 100% de datos sin split de validación (Mejora precisión final)
                     </div>
                   </div>
                 </label>

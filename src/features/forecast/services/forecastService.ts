@@ -14,17 +14,17 @@ export class ForecastService {
       variant_id: request.productId,
       start_date: request.startDate,
       end_date: request.endDate,
-      periods: request.predictionHorizon || 30,
-      lead_time_days: request.leadTime || 15,
-      current_stock: request.currentStock || 0,
-      service_level: (request.serviceLevel || 95) / 100, // Convertir porcentaje a decimal
-      outlier_treatment: request.outlier_treatment || 'cap',
-      outlier_sensitivity: request.outlier_sensitivity || 2.5,
-      test_mode: request.test_mode || false,
-      weekly_seasonality: request.weekly_seasonality || 10.0,
-      yearly_seasonality: request.yearly_seasonality || 0.0,
-      seasonality_prior_scale: request.seasonality_prior_scale || 10.0,
-      changepoint_prior_scale: request.changepoint_prior_scale || 0.05
+      periods: request.predictionHorizon ?? 30,
+      lead_time_days: request.leadTime ?? 15,
+      current_stock: request.currentStock ?? 0,
+      service_level: (request.serviceLevel ?? 95) / 100, // Convertir porcentaje a decimal
+      outlier_treatment: request.outlier_treatment ?? 'cap',
+      outlier_sensitivity: request.outlier_sensitivity ?? 2.5,
+      train_on_all_data: request.train_on_all_data ?? false,
+      weekly_seasonality: request.weekly_seasonality ?? 10.0,
+      yearly_seasonality: request.yearly_seasonality ?? 0.0,
+      seasonality_prior_scale: request.seasonality_prior_scale ?? 10.0,
+      changepoint_prior_scale: request.changepoint_prior_scale ?? 0.05
     };
 
     // Llamar directamente al API de predicción local
