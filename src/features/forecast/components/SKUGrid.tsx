@@ -1,5 +1,7 @@
 'use client';
 
+const BATCH_CHUNK_SIZE = 2;
+
 import { useState } from 'react';
 import { AlertCircle, Package, TrendingUp, Loader2, AlertTriangle, CheckCircle2, Archive, Zap, XCircle, Trash2 } from 'lucide-react';
 import { useMultiROPHistory } from '../hooks/useMultiROPHistory';
@@ -16,60 +18,115 @@ interface SKUGridProps {
   forecastParams: ForecastRequest | null;
 }
 
-function StatusBadge({ ropValue, restock }: { ropValue: number | undefined; restock: number | undefined }) {
-  if (ropValue === undefined || restock === undefined) {
+function StatusBadge({
+  currentStock,
+  reorderPoint,
+  safetyStock,
+  hasError,
+}: {
+  currentStock: number | undefined;
+  reorderPoint: number | undefined;
+  safetyStock: number | undefined;
+  hasError?: boolean;
+}) {
+  if (hasError || reorderPoint === undefined || safetyStock === undefined || currentStock === undefined) {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+      <span 
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500 cursor-help"
+        title="No hay suficientes datos históricos o de configuración para calcular el reabastecimiento recomendado."
+      >
         <AlertTriangle className="w-3 h-3" />
         Sin datos
       </span>
     );
   }
-  if (restock > ropValue) {
+  if (currentStock <= reorderPoint) {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+      <span 
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 cursor-help"
+        title="Stock crítico: El nivel actual está por debajo del Punto de Pedido. Se recomienda reponer inmediatamente."
+      >
         <AlertTriangle className="w-3 h-3" />
         Reponer
       </span>
     );
   }
+  if (currentStock <= reorderPoint + safetyStock) {
+    return (
+      <span 
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 cursor-help"
+        title="Alerta de reabastecimiento: El stock está cerca del punto crítico y por debajo de la reserva de seguridad."
+      >
+        <AlertCircle className="w-3 h-3" />
+        Alerta
+      </span>
+    );
+  }
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+    <span 
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 cursor-help"
+      title="Niveles de stock óptimos: El inventario actual es suficiente y está por encima de los puntos de seguridad."
+    >
       <CheckCircle2 className="w-3 h-3" />
-      OK
+      Stock OK
     </span>
   );
 }
 
 export function SKUGrid({ selectedIds, variants, onRemove, onSelect, selectedVariantId, forecastParams }: SKUGridProps) {
-  const { entries, isLoading, reload } = useMultiROPHistory(selectedIds);
+  const { entries, isLoading, reloadSome } = useMultiROPHistory(selectedIds);
   const [batchStatus, setBatchStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [batchError, setBatchError] = useState<string | null>(null);
+  const [predictingIds, setPredictingIds] = useState<Set<string>>(new Set());
+  const [completedCount, setCompletedCount] = useState(0);
 
   const handleBatchPredict = async () => {
     if (!forecastParams) return;
-    
+
     const selectedVariants = variants.filter(v =>
       selectedIds.includes(v.id?.toString() ?? '')
     );
     if (selectedVariants.length === 0) return;
 
+    // Dividir en chunks de 2
+    const chunks: (typeof selectedVariants)[] = [];
+    for (let i = 0; i < selectedVariants.length; i += BATCH_CHUNK_SIZE) {
+      chunks.push(selectedVariants.slice(i, i + BATCH_CHUNK_SIZE));
+    }
+
+    const allIds = selectedVariants.map(v => v.id?.toString() ?? '');
+    setPredictingIds(new Set(allIds));
+    setCompletedCount(0);
     setBatchStatus('loading');
     setBatchError(null);
-    try {
-      const result = await BatchForecastService.runBatch(selectedVariants, forecastParams);
-      console.log('✅ Batch predict result:', result);
-      
-      // Recargar la tabla con los nuevos datos devueltos/insertados
-      await reload();
 
-      setBatchStatus('success');
-      // Reset to idle after 4 s
-      setTimeout(() => setBatchStatus('idle'), 4000);
-    } catch (err) {
-      console.error('❌ Batch predict error:', err);
-      setBatchError(err instanceof Error ? err.message : 'Error desconocido');
+    // Lanzar todos los chunks en paralelo
+    const results = await Promise.allSettled(
+      chunks.map(async (chunk) => {
+        const chunkIds = chunk.map(v => v.id?.toString() ?? '');
+        try {
+          await BatchForecastService.runBatch(chunk, forecastParams);
+          await reloadSome(chunkIds);
+        } finally {
+          // Actualizar progreso y quitar del set de prediciendo
+          setCompletedCount(prev => prev + chunk.length);
+          setPredictingIds(prev => {
+            const next = new Set(prev);
+            chunkIds.forEach(id => next.delete(id));
+            return next;
+          });
+        }
+      })
+    );
+
+    const hasError = results.some(r => r.status === 'rejected');
+    if (hasError) {
+      const firstRejected = results.find(r => r.status === 'rejected') as PromiseRejectedResult;
+      setBatchError(firstRejected?.reason instanceof Error ? firstRejected.reason.message : 'Error en uno o más SKUs');
       setBatchStatus('error');
+    } else {
+      setBatchStatus('success');
+      setTimeout(() => setBatchStatus('idle'), 4000);
     }
   };
 
@@ -140,14 +197,14 @@ export function SKUGrid({ selectedIds, variants, onRemove, onSelect, selectedVar
                 : entry.variantId;
 
               const isSelected = entry.variantId === selectedVariantId;
-              const rowClasses = `transition-colors cursor-pointer ${
-                isSelected ? 'bg-blue-50/60 ring-1 ring-blue-500/20' : 'hover:bg-gray-50/70'
-              }`;
+              const rowClasses = `transition-colors cursor-pointer ${isSelected ? 'bg-blue-50/60 ring-1 ring-blue-500/20' : 'hover:bg-gray-50/70'
+                }`;
 
-              if (entry.isLoading || isLoading) {
+              const isPredicting = predictingIds.has(entry.variantId);
+              if (isPredicting || entry.isLoading || isLoading) {
                 return (
-                  <tr 
-                    key={entry.variantId} 
+                  <tr
+                    key={entry.variantId}
                     className={rowClasses}
                     onClick={() => onSelect?.(entry.variantId)}
                   >
@@ -155,7 +212,7 @@ export function SKUGrid({ selectedIds, variants, onRemove, onSelect, selectedVar
                     <td colSpan={5} className="px-4 py-3 text-center">
                       <span className="inline-flex items-center gap-1.5 text-gray-400 text-xs">
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        Cargando...
+                        {isPredicting ? 'Calculando predicción...' : 'Actualizando...'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
@@ -174,8 +231,8 @@ export function SKUGrid({ selectedIds, variants, onRemove, onSelect, selectedVar
               const rop = entry.ropData;
 
               return (
-                <tr 
-                  key={entry.variantId} 
+                <tr
+                  key={entry.variantId}
                   className={rowClasses}
                   onClick={() => onSelect?.(entry.variantId)}
                 >
@@ -213,8 +270,10 @@ export function SKUGrid({ selectedIds, variants, onRemove, onSelect, selectedVar
                   </td>
                   <td className="px-4 py-3 text-center">
                     <StatusBadge
-                      ropValue={rop?.reorder_point}
-                      restock={rop?.recommended_restock}
+                      currentStock={variant?.current_stock}
+                      reorderPoint={rop?.reorder_point}
+                      safetyStock={rop?.safety_stock}
+                      hasError={!!entry.error}
                     />
                   </td>
                   <td className="px-4 py-3 text-center border-l border-gray-50">
@@ -241,7 +300,7 @@ export function SKUGrid({ selectedIds, variants, onRemove, onSelect, selectedVar
           className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors shadow-sm"
         >
           {batchStatus === 'loading' ? (
-            <><Loader2 className="w-4 h-4 animate-spin" /> Calculando...</>
+            <><Loader2 className="w-4 h-4 animate-spin" /> Calculando ({completedCount}/{selectedIds.length})...</>
           ) : (
             <><Zap className="w-4 h-4" /> Predicción</>
           )}

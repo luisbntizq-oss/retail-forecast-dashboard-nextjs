@@ -65,5 +65,33 @@ export function useMultiROPHistory(variantIds: string[]) {
     load();
   }, [load]);
 
-  return { entries, isLoading, reload: load };
+  /**
+   * Recarga solo las entradas de los IDs indicados, sin resetear el resto de filas.
+   */
+  const reloadSome = useCallback(async (ids: string[]) => {
+    if (ids.length === 0) return;
+
+    setEntries(prev => prev.map(e =>
+      ids.includes(e.variantId) ? { ...e, isLoading: true } : e
+    ));
+
+    const results = await Promise.allSettled(
+      ids.map(id => ROPHistoryService.getROPHistory(id))
+    );
+
+    setEntries(prev => {
+      const updated = [...prev];
+      ids.forEach((id, i) => {
+        const idx = updated.findIndex(e => e.variantId === id);
+        if (idx === -1) return;
+        const result = results[i];
+        updated[idx] = result.status === 'fulfilled'
+          ? { variantId: id, ropData: result.value, isLoading: false, error: result.value ? null : 'Sin datos de ROP' }
+          : { variantId: id, ropData: null, isLoading: false, error: 'Error al cargar ROP' };
+      });
+      return updated;
+    });
+  }, []);
+
+  return { entries, isLoading, reload: load, reloadSome };
 }

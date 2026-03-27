@@ -1,15 +1,19 @@
 'use client';
 
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import type { ForecastResponse, SalesData } from '../types/forecast.types';
+import type { ForecastResponse, SalesData, Prediction } from '../types/forecast.types';
 
 interface ForecastChartProps {
   data: ForecastResponse | null;
   salesHistory: SalesData[];
   isLoadingHistory: boolean;
+  storedPredictions?: Prediction[];
 }
 
-export function ForecastChart({ data, salesHistory, isLoadingHistory }: ForecastChartProps) {
+export function ForecastChart({ data, salesHistory, isLoadingHistory, storedPredictions = [] }: ForecastChartProps) {
+  // Usar predicciones frescas del API si existen, si no usar las almacenadas en BD
+  const activePredictions = data?.predictions ?? storedPredictions;
+
   // Combinar datos históricos y predicciones
   const chartData = [
     // Datos históricos
@@ -21,7 +25,7 @@ export function ForecastChart({ data, salesHistory, isLoadingHistory }: Forecast
       límiteSuperior: null,
     })),
     // Predicciones (si existen)
-    ...(data?.predictions || []).map(prediction => ({
+    ...activePredictions.map(prediction => ({
       date: new Date(prediction.date).toLocaleDateString('es-ES', { month: 'short', day: 'numeric' }),
       ventasHistóricas: null,
       predicción: prediction.predicted_quantity,
@@ -30,14 +34,15 @@ export function ForecastChart({ data, salesHistory, isLoadingHistory }: Forecast
     })),
   ];
 
-  const hasData = salesHistory.length > 0 || (data?.predictions || []).length > 0;
+  const hasData = salesHistory.length > 0 || activePredictions.length > 0;
+  const showPredictions = activePredictions.length > 0;
 
   return (
     <div className="bg-white p-6 rounded-lg shadow">
       <div className="mb-4">
         <h3 className="text-lg font-semibold">
           {salesHistory.length > 0 ? 'Historial de Ventas' : 'Predicción de Demanda'}
-          {data && salesHistory.length > 0 && ' y Predicción'}
+          {showPredictions && salesHistory.length > 0 && ' y Predicción'}
         </h3>
         <div className="flex items-center gap-4 text-sm text-gray-600">
           {salesHistory.length > 0 && (
@@ -89,7 +94,7 @@ export function ForecastChart({ data, salesHistory, isLoadingHistory }: Forecast
             )}
 
             {/* Predicciones */}
-            {data && (
+            {showPredictions && (
               <>
                 <Line
                   type="monotone"

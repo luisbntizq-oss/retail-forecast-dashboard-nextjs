@@ -6,6 +6,7 @@ import { useForecast } from '../hooks/useForecast';
 import { useSalesHistory } from '../hooks/useSalesHistory';
 import { useROPHistory } from '../hooks/useROPHistory';
 import { useVariants } from '../hooks/useVariants';
+import { useLatestDemandPrediction } from '../hooks/useLatestDemandPrediction';
 import { ForecastControls } from './ForecastControls';
 import { ForecastChart } from './ForecastChart';
 import { SKUGrid } from './SKUGrid';
@@ -29,6 +30,7 @@ export function ForecastDashboard() {
     dateRange.endDate
   );
   const { ropData, isLoading: isLoadingROP, error: ropError, reload: reloadROP } = useROPHistory(selectedVariantId);
+  const { predictions: storedPredictions } = useLatestDemandPrediction(selectedVariantId);
 
   const handleVariantChange = (variantId: string | null) => {
     setSelectedVariantId(variantId);
@@ -42,7 +44,7 @@ export function ForecastDashboard() {
   const handleRemoveVariant = (idToRemove: string) => {
     const newIds = selectedVariantIds.filter(id => id !== idToRemove);
     setSelectedVariantIds(newIds);
-    
+
     // Si era el seleccionado principal, cambiarlo
     if (selectedVariantId === idToRemove) {
       const nextId = newIds.length > 0 ? newIds[0] : null;
@@ -58,7 +60,7 @@ export function ForecastDashboard() {
   const handleCalculate = async (request: any) => {
     try {
       if (selectedVariantIds.length > 1) {
-        const selectedVariants = variants.filter(v => 
+        const selectedVariants = variants.filter(v =>
           selectedVariantIds.includes(v.id?.toString() ?? '')
         );
         await BatchForecastService.runBatch(selectedVariants, request);
@@ -111,22 +113,22 @@ export function ForecastDashboard() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           <div className="lg:col-span-1">
-            <ForecastControls 
+            <ForecastControls
               selectedVariantIds={selectedVariantIds}
-              onCalculate={handleCalculate} 
+              onCalculate={handleCalculate}
               onVariantChange={handleVariantChange}
               onVariantsChange={handleVariantsChange}
               onDatesChange={handleDatesChange}
               onParamsChange={setForecastParams}
-              isCalculating={isCalculating} 
+              isCalculating={isCalculating}
             />
           </div>
 
           <div className="lg:col-span-2 space-y-4">
             {/* SKU Grid — siempre visible cuando hay IDs seleccionados */}
-            <SKUGrid 
-              selectedIds={selectedVariantIds} 
-              variants={variants} 
+            <SKUGrid
+              selectedIds={selectedVariantIds}
+              variants={variants}
               onRemove={handleRemoveVariant}
               onSelect={handleVariantChange}
               selectedVariantId={selectedVariantId}
@@ -135,10 +137,11 @@ export function ForecastDashboard() {
 
             {/* Gráfico de ventas — se desplaza debajo del grid */}
             {data || salesHistory.length > 0 ? (
-              <ForecastChart 
-                data={data} 
+              <ForecastChart
+                data={data}
                 salesHistory={salesHistory}
                 isLoadingHistory={isLoadingHistory}
+                storedPredictions={storedPredictions}
               />
             ) : (
               <div className="flex items-center justify-center h-full min-h-[300px] bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
