@@ -11,8 +11,11 @@ interface ForecastChartProps {
 }
 
 export function ForecastChart({ data, salesHistory, isLoadingHistory, storedPredictions = [] }: ForecastChartProps) {
-  // Usar predicciones frescas del API si existen, si no usar las almacenadas en BD
-  const activePredictions = data?.predictions ?? storedPredictions;
+  // Dar absoluta prioridad a lo que acaba de calcular el backend en memoria principal (data). 
+  // Si no hay cálculo activo en memoria, caemos a las predicciones de la BD recargadas.
+  const activePredictions = (data?.predictions && data.predictions.length > 0) 
+    ? data.predictions 
+    : storedPredictions;
 
   // Combinar datos históricos y predicciones
   const chartData = [

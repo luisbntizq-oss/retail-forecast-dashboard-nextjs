@@ -41,7 +41,7 @@ export class SalesHistoryService {
 
       return (data || []).map(record => ({
         date: record.date,
-        quantity: record.quantity_sold,
+        quantity: Number(record.quantity_sold),
       }));
     } catch (error) {
       throw error;

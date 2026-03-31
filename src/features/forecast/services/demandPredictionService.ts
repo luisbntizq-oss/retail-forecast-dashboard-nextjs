@@ -2,6 +2,32 @@ import { supabase } from '@/lib/supabase';
 import type { Prediction } from '../types/forecast.types';
 
 export class DemandPredictionService {
+  /** Obtiene predicciones usando el batch_id concreto devuelto por el API. */
+  static async getByBatchId(variantId: string, batchId: string): Promise<Prediction[]> {
+    if (!supabase) throw new Error('Supabase no está configurado');
+
+    const { data, error } = await supabase
+      .from('demand_prediction')
+      .select('prediction_date, predicted_quantity, lower_bound, upper_bound')
+      .eq('variant_id', variantId)
+      .eq('batch_id', batchId)
+      .order('prediction_date', { ascending: true });
+
+    if (error || !data) {
+      console.error('[DemandPrediction] Error al obtener predicciones por batch_id:', error?.message);
+      return [];
+    }
+
+    console.log(`[DemandPrediction] ${data.length} predicciones por batch_id=${batchId} variant_id=${variantId}`);
+    return data.map(row => ({
+      date: row.prediction_date,
+      predicted_quantity: Number(row.predicted_quantity),
+      lower_bound: Number(row.lower_bound),
+      upper_bound: Number(row.upper_bound),
+      confidence_interval: 0,
+    }));
+  }
+
   /**
    * Obtiene las predicciones del último batch para un variant_id dado.
    * Agrupa por batch_id y toma el de prediction_date más reciente.
@@ -17,7 +43,7 @@ export class DemandPredictionService {
       .not('batch_id', 'is', null)
       .order('calculated_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (batchError || !latestBatch) {
       console.warn('[DemandPrediction] No se encontró batch válido para variant_id:', variantId, batchError?.message);
@@ -43,9 +69,9 @@ export class DemandPredictionService {
 
     return predictions.map(row => ({
       date: row.prediction_date,
-      predicted_quantity: row.predicted_quantity,
-      lower_bound: row.lower_bound,
-      upper_bound: row.upper_bound,
+      predicted_quantity: Number(row.predicted_quantity),
+      lower_bound: Number(row.lower_bound),
+      upper_bound: Number(row.upper_bound),
       confidence_interval: 0,
     }));
   }

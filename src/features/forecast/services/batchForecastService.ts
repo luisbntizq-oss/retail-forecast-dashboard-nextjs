@@ -56,9 +56,12 @@ export class BatchForecastService {
       config_override: null,
     }));
 
+    // Guardamos el batch_id generado localmente — es el que el backend usará para persistir en demand_prediction
+    const localBatchId = generateUUIDv4();
+
     const payload: BatchForecastPayload = {
       batch_metadata: {
-        batch_id: generateUUIDv4(),
+        batch_id: localBatchId,
         execution_mode: 'high_precision',
       },
       defaults: {
@@ -102,6 +105,10 @@ export class BatchForecastService {
       );
     }
 
-    return response.json();
+    const result = await response.json();
+    console.log('>>> RESPUESTA DEL BACKEND BATCH:', JSON.stringify(result, null, 2));
+
+    // Garantizamos que batch_id siempre esté presente usando el que enviamos como fuente de verdad
+    return { ...result, batch_id: result.batch_id ?? localBatchId };
   }
 }

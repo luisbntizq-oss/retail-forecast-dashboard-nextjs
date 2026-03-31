@@ -16,6 +16,7 @@ interface SKUGridProps {
   onSelect?: (id: string) => void;
   selectedVariantId?: string | null;
   forecastParams: ForecastRequest | null;
+  onBatchComplete?: (batchId: string) => void;
 }
 
 function StatusBadge({
@@ -73,7 +74,7 @@ function StatusBadge({
   );
 }
 
-export function SKUGrid({ selectedIds, variants, onRemove, onSelect, selectedVariantId, forecastParams }: SKUGridProps) {
+export function SKUGrid({ selectedIds, variants, onRemove, onSelect, selectedVariantId, forecastParams, onBatchComplete }: SKUGridProps) {
   const { entries, isLoading, reloadSome } = useMultiROPHistory(selectedIds);
   const [batchStatus, setBatchStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [batchError, setBatchError] = useState<string | null>(null);
@@ -105,8 +106,13 @@ export function SKUGrid({ selectedIds, variants, onRemove, onSelect, selectedVar
       chunks.map(async (chunk) => {
         const chunkIds = chunk.map(v => v.id?.toString() ?? '');
         try {
-          await BatchForecastService.runBatch(chunk, forecastParams);
+          const response = await BatchForecastService.runBatch(chunk, forecastParams);
           await reloadSome(chunkIds);
+          console.log('[SKUGrid] chunk completado — batch_id:', response.batch_id, '| selectedVariantId:', selectedVariantId, '| chunkIds:', chunkIds);
+          // Si el chunk contiene el SKU seleccionado, notificar con el batch_id de la respuesta
+          if (selectedVariantId && chunkIds.includes(selectedVariantId) && response.batch_id) {
+            onBatchComplete?.(response.batch_id);
+          }
         } finally {
           // Actualizar progreso y quitar del set de prediciendo
           setCompletedCount(prev => prev + chunk.length);

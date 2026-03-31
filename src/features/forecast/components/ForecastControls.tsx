@@ -200,8 +200,14 @@ export function ForecastControls({ selectedVariantIds, onCalculate, onVariantCha
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label htmlFor="leadTime" className="block text-sm font-medium text-gray-700 mb-2 h-10 flex items-center">
+            <label htmlFor="leadTime" className="text-sm font-medium text-gray-700 mb-2 h-10 flex items-center gap-2">
               Lead Time (días)
+              <div className="group relative">
+                <Info className="w-4 h-4 text-gray-400 cursor-help" />
+                <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
+                  Tiempo en días que tarda el proveedor en entregar el pedido desde que se realiza.
+                </div>
+              </div>
             </label>
             <input
               type="number"
@@ -214,8 +220,14 @@ export function ForecastControls({ selectedVariantIds, onCalculate, onVariantCha
           </div>
 
           <div>
-            <label htmlFor="predictionHorizon" className="block text-sm font-medium text-gray-700 mb-2 h-10 flex items-center">
+            <label htmlFor="predictionHorizon" className="text-sm font-medium text-gray-700 mb-2 h-10 flex items-center gap-2">
               Horizonte (días)
+              <div className="group relative">
+                <Info className="w-4 h-4 text-gray-400 cursor-help" />
+                <div className="absolute right-0 bottom-full mb-2 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
+                  Cantidad de días a futuro para los cuales se generará la predicción de demanda de ventas.
+                </div>
+              </div>
             </label>
             <input
               type="number"

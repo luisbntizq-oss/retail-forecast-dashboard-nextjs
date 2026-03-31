@@ -30,7 +30,7 @@ export function ForecastDashboard() {
     dateRange.endDate
   );
   const { ropData, isLoading: isLoadingROP, error: ropError, reload: reloadROP } = useROPHistory(selectedVariantId);
-  const { predictions: storedPredictions } = useLatestDemandPrediction(selectedVariantId);
+  const { predictions: storedPredictions, reload: reloadPredictions, loadByBatchId } = useLatestDemandPrediction(selectedVariantId);
 
   const handleVariantChange = (variantId: string | null) => {
     setSelectedVariantId(variantId);
@@ -57,6 +57,11 @@ export function ForecastDashboard() {
     setDateRange({ startDate, endDate });
   };
 
+  const handleBatchComplete = async (batchId: string) => {
+    await reloadROP();
+    await loadByBatchId(batchId);
+  };
+
   const handleCalculate = async (request: any) => {
     try {
       if (selectedVariantIds.length > 1) {
@@ -64,10 +69,12 @@ export function ForecastDashboard() {
           selectedVariantIds.includes(v.id?.toString() ?? '')
         );
         await BatchForecastService.runBatch(selectedVariants, request);
+        await reloadROP();
+        await reloadPredictions();
       } else {
         await calculateForecast(request);
+        await reloadROP();
       }
-      await reloadROP(); // Recargar los KPIs de la tabla rop_history después de generar la predicción
     } catch (error) {
       console.error('Error al calcular predicción:', error);
     }
@@ -133,6 +140,7 @@ export function ForecastDashboard() {
               onSelect={handleVariantChange}
               selectedVariantId={selectedVariantId}
               forecastParams={forecastParams}
+              onBatchComplete={handleBatchComplete}
             />
 
             {/* Gráfico de ventas — se desplaza debajo del grid */}
