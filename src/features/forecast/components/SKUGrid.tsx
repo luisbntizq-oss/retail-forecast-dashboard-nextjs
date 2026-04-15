@@ -2,8 +2,8 @@
 
 const BATCH_CHUNK_SIZE = 2;
 
-import { useState } from 'react';
-import { AlertCircle, Package, TrendingUp, Loader2, AlertTriangle, CheckCircle2, Archive, Zap, XCircle, Trash2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { AlertCircle, Package, TrendingUp, Loader2, AlertTriangle, CheckCircle2, Archive, Zap, XCircle, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useMultiROPHistory } from '../hooks/useMultiROPHistory';
 import { Variant } from '../services/variantService';
 import { BatchForecastService } from '../services/batchForecastService';
@@ -17,6 +17,10 @@ interface SKUGridProps {
   selectedVariantId?: string | null;
   forecastParams: ForecastRequest | null;
   onBatchComplete?: (batchId: string) => void;
+  activeFilter?: 'critical' | 'alert' | 'ok';
+  onFilterChange?: (filter: 'critical' | 'alert' | 'ok') => void;
+  filterCounts?: { critical: number; alert: number; ok: number };
+  activeGroupIds?: string[];
 }
 
 function StatusBadge({
@@ -74,8 +78,27 @@ function StatusBadge({
   );
 }
 
-export function SKUGrid({ selectedIds, variants, onRemove, onSelect, selectedVariantId, forecastParams, onBatchComplete }: SKUGridProps) {
-  const { entries, isLoading, reloadSome } = useMultiROPHistory(selectedIds);
+const PAGE_SIZE = 25;
+const VISIBLE_ROWS = 5;
+// Each row ~44px + header ~44px → max-height for 5 rows
+const TABLE_MAX_HEIGHT = `${VISIBLE_ROWS * 44 + 44}px`;
+
+export function SKUGrid({ selectedIds, variants, onRemove, onSelect, selectedVariantId, forecastParams, onBatchComplete, activeFilter, onFilterChange, filterCounts, activeGroupIds }: SKUGridProps) {
+  const filteredSelectedIds = activeGroupIds 
+    ? selectedIds.filter(id => activeGroupIds.includes(id))
+    : selectedIds;
+
+  const [currentPage, setCurrentPage] = useState(0);
+  const totalPages = Math.ceil(filteredSelectedIds.length / PAGE_SIZE);
+  const safePage = Math.min(currentPage, Math.max(0, totalPages - 1));
+  const pagedIds = filteredSelectedIds.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+
+  // Reset to page 0 when selection changes significantly
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [filteredSelectedIds.length]);
+
+  const { entries, isLoading, reloadSome } = useMultiROPHistory(pagedIds);
   const [batchStatus, setBatchStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [batchError, setBatchError] = useState<string | null>(null);
   const [predictingIds, setPredictingIds] = useState<Set<string>>(new Set());
@@ -85,7 +108,7 @@ export function SKUGrid({ selectedIds, variants, onRemove, onSelect, selectedVar
     if (!forecastParams) return;
 
     const selectedVariants = variants.filter(v =>
-      selectedIds.includes(v.id?.toString() ?? '')
+      filteredSelectedIds.includes(v.id?.toString() ?? '')
     );
     if (selectedVariants.length === 0) return;
 
@@ -136,14 +159,6 @@ export function SKUGrid({ selectedIds, variants, onRemove, onSelect, selectedVar
     }
   };
 
-  if (selectedIds.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-28 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
-        <p className="text-sm text-gray-400">Selecciona uno o más SKUs para ver el resumen</p>
-      </div>
-    );
-  }
-
   const variantMap = new Map(variants.map(v => [v.id?.toString(), v]));
 
   return (
@@ -155,14 +170,49 @@ export function SKUGrid({ selectedIds, variants, onRemove, onSelect, selectedVar
           Resumen de SKUs seleccionados
         </h3>
         <span className="ml-auto text-xs text-gray-400">
-          {selectedIds.length} SKU{selectedIds.length !== 1 ? 's' : ''}
+          {filteredSelectedIds.length} SKU{filteredSelectedIds.length !== 1 ? 's' : ''}
         </span>
       </div>
 
+      {/* Filter buttons */}
+      <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
+        {(
+          [
+            { key: 'critical', label: 'Críticos', icon: <AlertTriangle className="w-3 h-3" />, active: 'bg-red-600 text-white', inactive: 'bg-red-50 text-red-700 hover:bg-red-100', badge: 'bg-red-500 text-white', badgeInactive: 'bg-red-100 text-red-600' },
+            { key: 'alert',    label: 'Alerta',   icon: <AlertCircle   className="w-3 h-3" />, active: 'bg-amber-500 text-white', inactive: 'bg-amber-50 text-amber-700 hover:bg-amber-100', badge: 'bg-amber-400 text-white', badgeInactive: 'bg-amber-100 text-amber-600' },
+            { key: 'ok',       label: 'Stock OK', icon: <CheckCircle2  className="w-3 h-3" />, active: 'bg-emerald-600 text-white', inactive: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100', badge: 'bg-emerald-500 text-white', badgeInactive: 'bg-emerald-100 text-emerald-600' },
+          ] as const
+        ).map(({ key, label, icon, active, inactive, badge, badgeInactive }) => {
+          const isActive = activeFilter === key;
+          const count = filterCounts?.[key] ?? 0;
+          return (
+            <button
+              key={key}
+              onClick={() => onFilterChange?.(key)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${isActive ? active : inactive}`}
+            >
+              {icon}
+              {label}
+              <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${isActive ? badge : badgeInactive}`}>
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Empty state */}
+      {filteredSelectedIds.length === 0 && (
+        <div className="flex items-center justify-center h-24 text-sm text-gray-400">
+          No hay SKUs en este estado
+        </div>
+      )}
+
       {/* Table */}
-      <div className="overflow-x-auto">
+      {filteredSelectedIds.length > 0 && (
+      <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: TABLE_MAX_HEIGHT }}>
         <table className="w-full text-sm">
-          <thead>
+          <thead className="sticky top-0 z-10">
             <tr className="bg-gray-50 border-b border-gray-100">
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">SKU</th>
               <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">
@@ -297,16 +347,42 @@ export function SKUGrid({ selectedIds, variants, onRemove, onSelect, selectedVar
           </tbody>
         </table>
       </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="px-5 py-2 border-t border-gray-100 flex items-center justify-between">
+          <span className="text-xs text-gray-500">
+            Página {safePage + 1} de {totalPages} · {filteredSelectedIds.length} SKUs en total
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+              disabled={safePage === 0}
+              className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+              disabled={safePage >= totalPages - 1}
+              className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Batch predict button */}
       <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-3">
         <button
           onClick={handleBatchPredict}
-          disabled={selectedIds.length === 0 || batchStatus === 'loading'}
+          disabled={filteredSelectedIds.length === 0 || batchStatus === 'loading'}
           className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors shadow-sm"
         >
           {batchStatus === 'loading' ? (
-            <><Loader2 className="w-4 h-4 animate-spin" /> Calculando ({completedCount}/{selectedIds.length})...</>
+            <><Loader2 className="w-4 h-4 animate-spin" /> Calculando ({completedCount}/{filteredSelectedIds.length})...</>
           ) : (
             <><Zap className="w-4 h-4" /> Predicción</>
           )}

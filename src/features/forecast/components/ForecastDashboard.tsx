@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { TrendingUp, AlertCircle, Package } from 'lucide-react';
+import type { ROPData } from '../services/ropHistoryService';
 import { useForecast } from '../hooks/useForecast';
 import { useSalesHistory } from '../hooks/useSalesHistory';
 import { useROPHistory } from '../hooks/useROPHistory';
@@ -13,6 +14,7 @@ import { SKUGrid } from './SKUGrid';
 import { ImportInventory } from '@/components/ImportInventory';
 import type { ForecastRequest } from '../types/forecast.types';
 import { BatchForecastService } from '../services/batchForecastService';
+import { ROPHistoryService } from '../services/ropHistoryService';
 
 export function ForecastDashboard() {
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
@@ -22,6 +24,8 @@ export function ForecastDashboard() {
     endDate: new Date().toISOString().split('T')[0]
   });
   const [forecastParams, setForecastParams] = useState<ForecastRequest | null>(null);
+  const [cachedRopMap, setCachedRopMap] = useState<Map<string, ROPData>>(new Map());
+  const [activeFilter, setActiveFilter] = useState<'critical' | 'alert' | 'ok'>('critical');
   const { variants } = useVariants();
   const { data, isCalculating, error, calculateForecast, reset } = useForecast();
   const { salesHistory, isLoading: isLoadingHistory, error: historyError } = useSalesHistory(
@@ -31,6 +35,52 @@ export function ForecastDashboard() {
   );
   const { ropData, isLoading: isLoadingROP, error: ropError, reload: reloadROP } = useROPHistory(selectedVariantId);
   const { predictions: storedPredictions, reload: reloadPredictions, loadByBatchId } = useLatestDemandPrediction(selectedVariantId);
+
+  // Clasifica todos los variants en grupos según su estado
+  const filterGroups = useMemo(() => {
+    const groups = { critical: [] as string[], alert: [] as string[], ok: [] as string[] };
+    for (const v of variants) {
+      const id = v.id?.toString() ?? '';
+      const rop = cachedRopMap.get(id);
+      const stock = v.current_stock ?? null;
+      if (!rop || stock === null) continue;
+      if (stock <= rop.reorder_point) groups.critical.push(id);
+      else if (stock <= rop.reorder_point + rop.safety_stock) groups.alert.push(id);
+      else groups.ok.push(id);
+    }
+    return groups;
+  }, [variants, cachedRopMap]);
+
+  // Auto-load: carga el mapa ROP una sola vez y activa el filtro críticos
+  const autoLoadedRef = useRef(false);
+  useEffect(() => {
+    if (autoLoadedRef.current || variants.length === 0) return;
+    autoLoadedRef.current = true;
+
+    const ids = variants.map(v => v.id?.toString() ?? '').filter(Boolean);
+    ROPHistoryService.getBulkLatestROPs(ids).then(ropMap => {
+      setCachedRopMap(ropMap);
+      // Calcular críticos inline (filterGroups aún no se ha actualizado)
+      const criticalIds = variants
+        .filter(v => {
+          const id = v.id?.toString() ?? '';
+          const rop = ropMap.get(id);
+          const stock = v.current_stock ?? null;
+          return rop && stock !== null && stock <= rop.reorder_point;
+        })
+        .map(v => v.id?.toString() ?? '');
+
+      setSelectedVariantIds(criticalIds);
+      setSelectedVariantId(criticalIds[0] ?? null);
+    });
+  }, [variants]);
+
+  const handleFilterChange = (filter: 'critical' | 'alert' | 'ok') => {
+    setActiveFilter(filter);
+    const ids = filterGroups[filter];
+    setSelectedVariantIds(ids);
+    handleVariantChange(ids[0] ?? null);
+  };
 
   const handleVariantChange = (variantId: string | null) => {
     setSelectedVariantId(variantId);
@@ -141,6 +191,14 @@ export function ForecastDashboard() {
               selectedVariantId={selectedVariantId}
               forecastParams={forecastParams}
               onBatchComplete={handleBatchComplete}
+              activeFilter={activeFilter}
+              onFilterChange={handleFilterChange}
+              filterCounts={{
+                critical: filterGroups.critical.length,
+                alert: filterGroups.alert.length,
+                ok: filterGroups.ok.length,
+              }}
+              activeGroupIds={filterGroups[activeFilter]}
             />
 
             {/* Gráfico de ventas — se desplaza debajo del grid */}

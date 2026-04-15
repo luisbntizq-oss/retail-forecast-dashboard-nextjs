@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Package, Calendar, ChevronDown, Info } from 'lucide-react';
+import { Package, Calendar, ChevronDown, Info, Search } from 'lucide-react';
 import { useVariants } from '../hooks/useVariants';
 import type { ForecastRequest } from '../types/forecast.types';
 
@@ -17,6 +17,7 @@ interface ForecastControlsProps {
 
 export function ForecastControls({ selectedVariantIds, onCalculate, onVariantChange, onVariantsChange, onDatesChange, onParamsChange, isCalculating }: ForecastControlsProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [skuSearchQuery, setSkuSearchQuery] = useState('');
   const { variants, isLoading: isLoadingVariants, error: variantsError } = useVariants();
 
   const [params, setParams] = useState<ForecastRequest>({
@@ -47,6 +48,15 @@ export function ForecastControls({ selectedVariantIds, onCalculate, onVariantCha
   useEffect(() => {
     onParamsChange?.(params);
   }, [params, onParamsChange]);
+
+  // Sync internal productId when parent sets selectedVariantIds externally (e.g. auto-load)
+  useEffect(() => {
+    const first = selectedVariantIds[0] ?? '';
+    setParams(prev => {
+      if (prev.productId === first) return prev;
+      return { ...prev, productId: first };
+    });
+  }, [selectedVariantIds]);
 
   const handleCheckboxChange = (value: string) => {
     let newSelected: string[];
@@ -79,6 +89,13 @@ export function ForecastControls({ selectedVariantIds, onCalculate, onVariantCha
       onDatesChange?.(newParams.startDate, newParams.endDate);
     }
   };
+
+  const filteredVariants = variants.filter(variant => {
+    const search = skuSearchQuery.toLowerCase();
+    const idMatch = variant.id?.toString().toLowerCase().includes(search);
+    const skuMatch = variant.sku?.toLowerCase().includes(search);
+    return idMatch || skuMatch;
+  });
 
 
   return (
@@ -128,23 +145,38 @@ export function ForecastControls({ selectedVariantIds, onCalculate, onVariantCha
                   className="fixed inset-0 z-10"
                   onClick={() => setIsDropdownOpen(false)}
                 ></div>
-                <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                  {variants.map((variant) => (
-                    <label key={variant.id} className="flex items-center px-4 py-2 hover:bg-gray-50 cursor-pointer">
+                <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-72 flex flex-col">
+                  <div className="p-2 border-b border-gray-100 flex-shrink-0 sticky top-0 bg-white z-10">
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-2 h-4 w-4 text-gray-400" />
                       <input
-                        type="checkbox"
-                        checked={selectedVariantIds.includes(variant.id?.toString() || '')}
-                        onChange={() => handleCheckboxChange(variant.id?.toString() || '')}
-                        className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 mr-3"
+                        type="text"
+                        placeholder="Buscar SKU..."
+                        value={skuSearchQuery}
+                        onChange={(e) => setSkuSearchQuery(e.target.value)}
+                        className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        onClick={(e) => e.stopPropagation()}
                       />
-                      <span className="text-sm text-gray-700">
-                        {variant.id}{variant.sku ? ` (${variant.sku})` : ''}
-                      </span>
-                    </label>
-                  ))}
-                  {variants.length === 0 && (
-                    <div className="px-4 py-2 text-sm text-gray-500">No hay variantes disponibles</div>
-                  )}
+                    </div>
+                  </div>
+                  <div className="overflow-y-auto">
+                    {filteredVariants.map((variant) => (
+                      <label key={variant.id} className="flex items-center px-4 py-2 hover:bg-gray-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedVariantIds.includes(variant.id?.toString() || '')}
+                          onChange={() => handleCheckboxChange(variant.id?.toString() || '')}
+                          className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 mr-3"
+                        />
+                        <span className="text-sm text-gray-700">
+                          {variant.id}{variant.sku ? ` (${variant.sku})` : ''}
+                        </span>
+                      </label>
+                    ))}
+                    {filteredVariants.length === 0 && (
+                      <div className="px-4 py-3 text-sm text-gray-500 text-center">No se encontraron SKUs</div>
+                    )}
+                  </div>
                 </div>
               </>
             )}
